@@ -153,6 +153,8 @@ const INITIAL_EDGES = [
   { id: "e11", from: "memory", to: "bot", label: "Đọc digest" },
   { id: "e13", from: "user", to: "telegram", label: "Chat" },
   { id: "e14", from: "telegram", to: "user", label: "Nhận" },
+  { id: "e15", from: "telegram", to: "orch", label: "Hỏi" },
+  { id: "e16", from: "orch", to: "telegram", label: "Đáp" },
   { id: "e12", from: "claude", to: "memory", label: "Lưu code/doc" },
 ];
 
@@ -190,6 +192,19 @@ const SCENARIOS = [
       { node: "gemini", via: "e8", ms: 2000, msg: "Đối chiếu tài liệu chính thức của thư viện, kiểm tra edge case và breaking changes." },
       { node: "orch", via: "e9", ms: 1100, msg: "Hợp nhất patch + cảnh báo edge case thành báo cáo duy nhất." },
       { node: "user", via: "e2", ms: 800, msg: "Nhận patch đã xác minh kèm báo cáo review." },
+    ],
+  },
+  {
+    id: "telegram-chat", name: "Kịch bản 4 · Chat qua Telegram",
+    desc: "User → Telegram → Orchestrator → Claude → Orchestrator → Telegram → User",
+    steps: [
+      { node: "user", ms: 800, msg: "Nhắn cho bot Telegram: «Tóm tắt giúp mình lỗi build hôm nay»." },
+      { node: "telegram", via: "e13", ms: 1000, msg: "Bot nhận tin nhắn qua Webhook, chuẩn hóa thành yêu cầu." },
+      { node: "orch", via: "e15", ms: 1200, msg: "Phân loại yêu cầu và định tuyến tới Claude." },
+      { node: "claude", via: "e7", ms: 2200, msg: "Phân tích log build, tóm tắt nguyên nhân và cách sửa." },
+      { node: "orch", via: "e6", ms: 1000, msg: "Rút gọn nội dung cho phù hợp khung chat." },
+      { node: "telegram", via: "e16", ms: 1000, msg: "Định dạng Markdown và gửi trả lời vào cuộc trò chuyện." },
+      { node: "user", via: "e14", ms: 800, msg: "Nhận phản hồi trên Telegram." },
     ],
   },
 ];
