@@ -196,8 +196,8 @@ const SCENARIOS = [
     ],
   },
   {
-    id: "telegram-agents", name: "Kịch bản 5 · Telegram → Gemini → Claude (agent thật)",
-    desc: "Telegram → Orchestrator → Gemini (nghiên cứu) → Claude (trả lời) → Telegram. Gọi API thật khi chạy từ nút Telegram thật.",
+    id: "telegram-agents", name: "Kịch bản 5 · Telegram → Gemini → Claude (như bot thật)",
+    desc: "Telegram → Orchestrator → Gemini (nghiên cứu) → Claude (trả lời) → Telegram. Bot thật chạy luồng này trên Vercel qua webhook; ở đây là mô phỏng.",
     steps: [
       { node: "user", ms: 800, msg: "Nhắn cho bot Telegram." },
       { node: "telegram", via: "e13", ms: 900, msg: "Bot nhận tin nhắn qua Webhook, chuẩn hóa thành yêu cầu." },
@@ -521,73 +521,70 @@ function ExportModal({ nodes, edges, onClose }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Modal Telegram thật                                                 */
+/* Modal Telegram Webhook (trạng thái cấu hình trên Vercel)            */
 /* ------------------------------------------------------------------ */
-function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgKey, running, onTest, onClose }) {
-  const [keyText, setKeyText] = useState(tgKey);
-  const [testText, setTestText] = useState("");
-  const label = { off: "Đang tắt", connecting: "Đang kết nối…", live: "Đang nghe bot", setup: "Cần đặt Chat ID", error: "Lỗi" }[status] || status;
-  const toggle = () => {
-    if (!live) {
-      setTgKey(keyText);
-      try { localStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ }
-    }
-    try { localStorage.setItem("tg-live", live ? "0" : "1"); } catch (e) { /* bỏ qua */ }
-    setLive(!live);
+function WebhookModal({ onClose }) {
+  const [st, setSt] = useState({ loading: true });
+  const [copied, setCopied] = useState(false);
+  const endpoint = (typeof location !== "undefined" ? location.origin : "https://<ten-mien>.vercel.app") + "/api/webhook";
+  const setUrl = "https://api.telegram.org/bot<TOKEN>/setWebhook?url=" + endpoint + "&secret_token=<SECRET>";
+
+  const load = async () => {
+    setSt({ loading: true });
+    try {
+      const r = await fetch("/api/webhook");
+      if (!(r.headers.get("content-type") || "").includes("json")) throw new Error("Không tìm thấy /api/webhook. Hãy mở trang từ bản deploy trên Vercel.");
+      setSt({ loading: false, ...(await r.json()) });
+    } catch (e) { setSt({ loading: false, error: e.message || "Lỗi kết nối" }); }
   };
+  useEffect(() => { load(); }, []);
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(setUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) { /* bỏ qua */ }
+  };
+  const Row = ({ ok, label, hint }) => (
+    <div className="flex items-start gap-2 text-xs">
+      <span className={"mt-0.5 " + (ok ? "text-emerald-400" : "text-rose-400")}>{ok ? "✓" : "✗"}</span>
+      <span className="text-slate-300">{label}{!ok && hint && <span className="text-slate-500"> · {hint}</span>}</span>
+    </div>
+  );
+  const hookOk = st.webhookUrl === endpoint;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="flex w-full max-w-lg flex-col rounded-xl border border-slate-800 bg-slate-900 shadow-2xl" style={{ maxHeight: "85vh" }}>
+      <div className="flex w-full max-w-lg flex-col rounded-xl border border-slate-800 bg-slate-900 shadow-2xl" style={{ maxHeight: "88vh" }}>
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-semibold"><Icon name="send" size={15} />Kết nối bot Telegram thật</div>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Icon name="send" size={15} />Telegram Webhook</div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200"><Icon name="x" size={16} /></button>
         </div>
-        <div className="space-y-4 overflow-auto p-4 scroll-thin text-sm">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">Trạng thái:</span>
-            <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-200">{label}</span>
-          </div>
-          {note && <div className="rounded-md border border-amber-900/60 bg-amber-950/30 p-2.5 text-xs text-amber-300">{note}</div>}
-          {status === "setup" && (
-            <div className="rounded-md border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300">
-              Hãy nhắn một tin bất kỳ cho bot, rồi đặt <code className="text-sky-300">TELEGRAM_CHAT_ID</code> trên Vercel bằng ID của bạn bên dưới và redeploy.
-              <div className="mt-2 space-y-1">
-                {chats.length === 0 && <div className="text-slate-500">Chưa thấy cuộc trò chuyện nào. Nhắn tin cho bot rồi chờ vài giây.</div>}
-                {chats.map(c => <div key={c.id} className="font-mono">{c.id} <span className="text-slate-500">· {c.name}</span></div>)}
-              </div>
-            </div>
-          )}
-          <div>
-            <label className={labelCls}>Studio Key (nếu bạn đã đặt STUDIO_KEY)</label>
-            <input type="password" className={inputCls} value={keyText} onChange={e => setKeyText(e.target.value)} placeholder="Để trống nếu không dùng" disabled={live} />
-          </div>
-          <button onClick={toggle} className={"w-full rounded-md px-3 py-2 text-sm font-medium " + (live ? "border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700" : "bg-emerald-500 text-slate-950 hover:bg-emerald-400")}>
-            {live ? "Ngắt kết nối" : "Bật kết nối"}
-          </button>
-          <p className="text-[11px] leading-relaxed text-slate-500">
-            Khi bật, trang hỏi bot mỗi 3 giây. Mỗi tin nhắn mới sẽ chạy Kịch bản 4 trên sơ đồ và bot gửi lại một phản hồi xác nhận. Tin nhắn cũ trước lúc bật bị bỏ qua. Sau khi bật một lần, trang tự kết nối lại mỗi lần mở (Studio Key được lưu trong trình duyệt này); bấm “Ngắt kết nối” để tắt. Token bot nằm trên Vercel, không nằm trong trình duyệt.
+        <div className="space-y-4 overflow-auto p-4 text-sm scroll-thin">
+          <p className="text-xs leading-relaxed text-slate-400">
+            Telegram gọi thẳng vào <code className="text-sky-300">/api/webhook</code> trên Vercel. Function chạy Gemini (tra cứu) rồi Claude (trả lời) và gửi lại cho bạn, kể cả khi không mở trang này.
+            Sơ đồ ở đây dùng để thiết kế và mô phỏng, không sáng lên theo tin nhắn thật.
           </p>
-          <div>
-            <label className={labelCls}>Thử nhanh agent thật (không cần Telegram)</label>
-            <div className="flex gap-2">
-              <input className={inputCls} value={testText} onChange={e => setTestText(e.target.value)} placeholder="VD: So sánh React và Vue cho dashboard" />
-              <button disabled={running || !testText.trim() || !keyText}
-                onClick={() => { setTgKey(keyText); try { localStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ } onTest(testText.trim(), keyText); onClose(); }}
-                className="shrink-0 rounded-md border border-slate-700 bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-40">Chạy thử</button>
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500">Cần Studio Key. Gọi Gemini rồi Claude qua /api/agent và xem kết quả trong Execution Trace.</p>
+          <div className="space-y-1.5 rounded-md border border-slate-800 bg-slate-950 p-3">
+            {st.loading && <div className="text-xs text-slate-500">Đang kiểm tra…</div>}
+            {st.error && <div className="text-xs text-amber-300">{st.error}</div>}
+            {!st.loading && !st.error && (<>
+              <Row ok={st.token} label="TELEGRAM_BOT_TOKEN" hint="token từ @BotFather" />
+              <Row ok={st.secret} label="TELEGRAM_WEBHOOK_SECRET" hint="chuỗi bí mật tự đặt (A-Z a-z 0-9 _ -)" />
+              <Row ok={st.chatId} label="TELEGRAM_CHAT_ID" hint="nhắn /start cho bot để biết ID của bạn" />
+              <Row ok={st.gemini} label="GEMINI_API_KEY" hint="bắt buộc để tra cứu" />
+              <Row ok={st.claude} label="ANTHROPIC_API_KEY (tùy chọn)" hint="không có thì Gemini trả lời thay Claude" />
+              <Row ok={hookOk} label="Webhook đã trỏ tới trang này" hint={st.webhookUrl ? "đang trỏ tới " + st.webhookUrl : "chưa đăng ký, xem bước bên dưới"} />
+              {st.lastError && <div className="pt-1 text-xs text-amber-300">Lỗi gần nhất từ Telegram: {st.lastError}</div>}
+              {typeof st.pending === "number" && st.pending > 0 && <div className="text-xs text-slate-500">Tin chờ xử lý: {st.pending}</div>}
+            </>)}
           </div>
           <div>
-            <label className={labelCls}>Tin nhắn gần đây</label>
-            <div className="space-y-1">
-              {msgs.length === 0 && <div className="text-xs text-slate-600">Chưa có tin nhắn mới.</div>}
-              {msgs.map(m => (
-                <div key={m.id} className="rounded-md border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-300">
-                  <span className="text-slate-500">{m.from || "?"}:</span> {m.text}
-                </div>
-              ))}
-            </div>
+            <label className={labelCls}>Đăng ký webhook (mở link này trong trình duyệt, thay &lt;TOKEN&gt; và &lt;SECRET&gt;)</label>
+            <textarea readOnly rows={3} value={setUrl} onFocus={e => e.target.select()} className={inputCls + " resize-none font-mono text-[11px]"} />
+            <p className="mt-1 text-[11px] text-slate-500">&lt;SECRET&gt; phải trùng với TELEGRAM_WEBHOOK_SECRET trên Vercel. Chỉ nhập token vào chính trình duyệt của bạn, đừng dán vào chat.</p>
           </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 border-t border-slate-800 px-4 py-3">
+          <button onClick={load} className="rounded-md border border-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800">Kiểm tra lại</button>
+          <button onClick={copy} className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-white"><Icon name="copy" size={14} />{copied ? "Đã copy" : "Copy link đăng ký"}</button>
         </div>
       </div>
     </div>
@@ -627,16 +624,6 @@ function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showTg, setShowTg] = useState(false);
-  const [live, setLive] = useState(false);
-  const [tgStatus, setTgStatus] = useState("off");
-  const [tgNote, setTgNote] = useState("");
-  const [tgChats, setTgChats] = useState([]);
-  const [tgMsgs, setTgMsgs] = useState([]);
-  const [tgKey, setTgKey] = useState("");
-  const [queue, setQueue] = useState([]);
-  const offsetRef = useRef(null);
-  const baseRef = useRef(false);
-  const inflightRef = useRef(false);
 
   const runRef = useRef(0);
   const speedRef = useRef(1);
@@ -649,14 +636,6 @@ function App() {
 
   useEffect(() => { if (logEndRef.current) logEndRef.current.scrollTop = logEndRef.current.scrollHeight; }, [logs, drawerOpen]);
 
-  useEffect(() => {
-    try {
-      const k = localStorage.getItem("studio-key") || sessionStorage.getItem("studio-key");
-      if (k) setTgKey(k);
-      if (localStorage.getItem("tg-live") === "1") setLive(true); /* tự kết nối bot Telegram */
-    } catch (e) { /* bỏ qua */ }
-  }, []);
-
   /* Tự động lưu sơ đồ vào trình duyệt */
   useEffect(() => {
     const t = setTimeout(() => {
@@ -664,97 +643,6 @@ function App() {
     }, 300);
     return () => clearTimeout(t);
   }, [nodes, edges]);
-
-  /* Polling Telegram thật qua /api/telegram */
-  useEffect(() => {
-    if (!live) { offsetRef.current = null; baseRef.current = false; setTgStatus(st => (st === "error" ? st : "off")); return; }
-    let stop = false;
-    setTgStatus("connecting");
-    const headers = tgKey ? { "x-studio-key": tgKey } : {};
-    const tick = async () => {
-      if (inflightRef.current) return;
-      inflightRef.current = true;
-      try {
-        const url = "/api/telegram" + (offsetRef.current != null ? "?offset=" + offsetRef.current : "");
-        const r = await fetch(url, { headers });
-        const ct = r.headers.get("content-type") || "";
-        if (!ct.includes("json")) throw new Error("Không tìm thấy /api/telegram. Tính năng này chỉ chạy khi deploy trên Vercel.");
-        const j = await r.json();
-        if (stop) return;
-        if (r.status === 401) { setTgStatus("error"); setTgNote("Sai hoặc thiếu Studio Key."); setLive(false); return; }
-        if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
-        if (!j.configured) { setTgStatus("error"); setTgNote("Chưa đặt biến môi trường TELEGRAM_BOT_TOKEN trên Vercel."); setLive(false); return; }
-        if (j.needsChatId) { setTgStatus("setup"); setTgChats(j.chats || []); setTgNote("Chưa đặt TELEGRAM_CHAT_ID."); return; }
-        setTgStatus("live"); setTgNote("");
-        if (!baseRef.current) { baseRef.current = true; if (j.next != null) offsetRef.current = j.next; return; }
-        if (j.next != null) offsetRef.current = j.next;
-        if (j.updates && j.updates.length) {
-          setTgMsgs(m => [...j.updates.map(u => ({ ...u, at: Date.now() })), ...m].slice(0, 8));
-          setQueue(q => [...q, ...j.updates]);
-        }
-      } catch (e) {
-        if (!stop) { setTgStatus("error"); setTgNote(e.message || "Lỗi kết nối"); setLive(false); }
-      } finally { inflightRef.current = false; }
-    };
-    tick();
-    const t = setInterval(tick, 3000);
-    return () => { stop = true; clearInterval(t); };
-  }, [live, tgKey]);
-
-  /* Chạy luồng Telegram → Gemini → Claude với agent thật (gọi /api/agent) */
-  const runLive = (text, send, key) => {
-    const hdr = { "content-type": "application/json", ...(key ? { "x-studio-key": key } : {}) };
-    const ctx = {};
-    const today = new Date().toLocaleDateString("vi-VN", { dateStyle: "full" });
-    const callAgent = async (agent, prompt) => {
-      const node = nodesRef.current.find(n => n.id === agent);
-      const r = await fetch("/api/agent", { method: "POST", headers: hdr, body: JSON.stringify({ agent, system: node ? node.prompt : "", prompt }) });
-      const ct = r.headers.get("content-type") || "";
-      if (!ct.includes("json")) throw new Error("Không tìm thấy /api/agent (chỉ chạy khi deploy trên Vercel).");
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || "HTTP " + r.status);
-      return j.text;
-    };
-    setScenarioId("telegram-agents");
-    return runSim("telegram-agents", {
-      userText: text,
-      exec: {
-        gemini: async () => {
-          ctx.notes = await callAgent("gemini", "Hôm nay là " + today + ". Yêu cầu của người dùng: " + text + "\n\nHãy dùng Google Search để lấy dữ liệu mới nhất và cụ thể (số liệu, thứ hạng, kết quả gần đây, thành tích, mốc thời gian), kèm nguồn và ngày của dữ liệu. Không bịa số liệu; nếu không tìm thấy thì nói rõ. Trả lời dạng gạch đầu dòng.");
-          return ctx.notes;
-        },
-        claude: async () => {
-          const p = "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt. Giữ lại các số liệu cụ thể và nguồn từ ghi chú, nếu thiếu số liệu thì nói rõ là thiếu. Viết văn bản thuần, không dùng Markdown (không **, không #), có thể dùng emoji và dấu • cho danh sách, tối đa khoảng 1500 ký tự.";
-          try {
-            ctx.answer = await callAgent("claude", p);
-            return ctx.answer;
-          } catch (e) {
-            if (!/ANTHROPIC_API_KEY/.test(e.message || "")) throw e;
-            ctx.answer = await callAgent("gemini", p);
-            return "(Chưa có ANTHROPIC_API_KEY nên Gemini trả lời thay) " + ctx.answer;
-          }
-        },
-      },
-      onReply: async log => {
-        if (!send) { log("sys", "ℹ Chạy thử: không gửi tin sang Telegram."); return; }
-        const reply = (ctx.answer || "Đã nhận: «" + text.slice(0, 200) + "»\n\n(Chưa gọi được agent thật, xem Execution Trace để biết lý do.)").slice(0, 3500);
-        try {
-          const r = await fetch("/api/telegram", { method: "POST", headers: hdr, body: JSON.stringify({ text: reply }) });
-          const j = await r.json().catch(() => ({}));
-          if (r.ok && j.ok) log("done", "✉ Đã gửi phản hồi tới Telegram thật", "telegram");
-          else log("sys", "⚠ Gửi Telegram thất bại: " + (j.error || r.status));
-        } catch (e) { log("sys", "⚠ Gửi Telegram thất bại: " + e.message); }
-      },
-    });
-  };
-
-  /* Mỗi tin nhắn Telegram mới → chạy luồng agent thật */
-  useEffect(() => {
-    if (!live || running || queue.length === 0) return;
-    const [m, ...rest] = queue;
-    setQueue(rest);
-    runLive(m.text.slice(0, 500), true, tgKey);
-  }, [live, running, queue]);
 
   const scenario = SCENARIOS.find(s => s.id === scenarioId);
   const selectedNode = nodes.find(n => n.id === selected) || null;
@@ -968,8 +856,7 @@ function App() {
             <Icon name="reset" size={14} />{confirmReset ? "Bấm lần nữa để xác nhận" : "Mặc định"}
           </button>
           <button onClick={() => setShowTg(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-600">
-            <span className="h-2 w-2 rounded-full" style={{ background: tgStatus === "live" ? "#34d399" : tgStatus === "connecting" || tgStatus === "setup" ? "#f59e0b" : tgStatus === "error" ? "#fb7185" : "#475569" }} />
-            <Icon name="send" size={14} />Telegram thật
+            <Icon name="send" size={14} />Telegram Webhook
           </button>
           <button onClick={() => setShowExport(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-600">
             <Icon name="copy" size={14} />Export
@@ -1054,7 +941,7 @@ function App() {
       </section>
 
       {showAdd && <AddAgentModal nodes={nodes} onClose={() => setShowAdd(false)} onCreate={createAgent} />}
-      {showTg && <TelegramModal status={tgStatus} note={tgNote} chats={tgChats} msgs={tgMsgs} live={live} setLive={setLive} tgKey={tgKey} setTgKey={setTgKey} running={running} onTest={(t, k) => runLive(t, false, k)} onClose={() => setShowTg(false)} />}
+      {showTg && <WebhookModal onClose={() => setShowTg(false)} />}
       {showExport && <ExportModal nodes={nodes} edges={edges} onClose={() => setShowExport(false)} />}
     </div>
   );
