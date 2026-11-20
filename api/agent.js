@@ -1,15 +1,14 @@
 // Vercel Serverless Function: gọi Claude (Anthropic) hoặc Gemini (Google) cho Multi-Agent Studio.
 // Biến môi trường:
-//   Xác thực: phiên đăng nhập (ADMIN_USER, ADMIN_PASSWORD, SESSION_SECRET) hoặc header x-studio-key = STUDIO_KEY
+//   STUDIO_KEY         (bắt buộc)  mọi request phải có header x-studio-key, tránh bị người lạ đốt tiền API
 //   ANTHROPIC_API_KEY  (cho Claude)  CLAUDE_MODEL (mặc định claude-sonnet-5-5)
 //   GEMINI_API_KEY     (cho Gemini)  GEMINI_MODEL (mặc định gemini-3.6-flash), GEMINI_SEARCH=off để tắt Google Search
 
-const { authAvailable, isAuthed } = require("./_auth");
-
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  if (!authAvailable()) return res.status(503).json({ ok: false, error: "Cần cấu hình đăng nhập (ADMIN_USER, ADMIN_PASSWORD, SESSION_SECRET) hoặc STUDIO_KEY trước khi dùng agent thật." });
-  if (!isAuthed(req)) return res.status(401).json({ ok: false, error: "Chưa đăng nhập hoặc sai Studio Key." });
+  const studioKey = process.env.STUDIO_KEY;
+  if (!studioKey) return res.status(503).json({ ok: false, error: "Cần đặt STUDIO_KEY trên Vercel trước khi dùng agent thật." });
+  if (req.headers["x-studio-key"] !== studioKey) return res.status(401).json({ ok: false, error: "Sai hoặc thiếu Studio Key." });
 
   const claudeKey = process.env.ANTHROPIC_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
