@@ -74,7 +74,7 @@ const PALETTE = ["#f59e0b", "#818cf8", "#2dd4bf", "#e879f9", "#38bdf8", "#34d399
 
 const INITIAL_NODES = [
   {
-    id: "user", name: "Người dùng", icon: "user", color: "#94a3b8", x: 40, y: 70,
+    id: "user", name: "Người dùng", icon: "user", color: "#94a3b8", x: 40, y: 40,
     role: "Nguồn yêu cầu và nơi nhận kết quả cuối cùng.",
     model: "Human", tools: ["Chat UI", "API Client"],
     prompt: "Không có System Prompt. Gửi yêu cầu bằng ngôn ngữ tự nhiên, nhận lại kết quả (code, tài liệu, bản tin).",
@@ -82,7 +82,15 @@ const INITIAL_NODES = [
     output: "{ result: string | Artifact }",
   },
   {
-    id: "scheduler", name: "Scheduler", icon: "clock", color: "#94a3b8", x: 40, y: 400,
+    id: "telegram", name: "Telegram", icon: "send", color: "#38bdf8", x: 40, y: 250,
+    role: "Kênh chat của người dùng: nhận tin nhắn gửi tới và phản hồi lại qua Telegram Bot.",
+    model: "Telegram Bot API", tools: ["Telegram Bot", "Webhook", "Inline Keyboard"],
+    prompt: "Không có System Prompt. Nhận tin nhắn từ người dùng qua Bot, chuyển thành yêu cầu và gửi kết quả/thông báo ngược lại cho người dùng.",
+    input: "{ chatId: number, text: string }",
+    output: "{ messageId: number, delivered: boolean }",
+  },
+  {
+    id: "scheduler", name: "Scheduler", icon: "clock", color: "#94a3b8", x: 40, y: 460,
     role: "Kích hoạt job định kỳ (cron) cho các luồng tự động.",
     model: "Cron / Trigger", tools: ["Cron", "Webhook Trigger"],
     prompt: "Không có System Prompt. Phát sự kiện theo lịch (VD: 07:00 hằng ngày) để khởi chạy luồng Auto Digest.",
@@ -143,6 +151,8 @@ const INITIAL_EDGES = [
   { id: "e9", from: "gemini", to: "orch", label: "Báo cáo" },
   { id: "e10", from: "gemini", to: "memory", label: "Lưu digest" },
   { id: "e11", from: "memory", to: "bot", label: "Đọc digest" },
+  { id: "e13", from: "user", to: "telegram", label: "Chat" },
+  { id: "e14", from: "telegram", to: "user", label: "Nhận" },
   { id: "e12", from: "claude", to: "memory", label: "Lưu code/doc" },
 ];
 
