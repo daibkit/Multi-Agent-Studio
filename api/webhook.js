@@ -1,7 +1,8 @@
 // Webhook Telegram: Telegram gọi thẳng vào đây, function chạy Gemini → Claude rồi trả lời.
 // Biến môi trường:
 //   TELEGRAM_BOT_TOKEN       token từ @BotFather
-//   TELEGRAM_WEBHOOK_SECRET  chuỗi bí mật (A-Z a-z 0-9 _ -) trùng với secret_token khi setWebhook
+//   TELEGRAM_WEBHOOK_SECRET  chuỗi bí mật (A-Z a-z 0-9 _ -) trùng với secret_token khi setWebhook;
+//                            nếu không đặt thì dùng STUDIO_KEY (cũng phải chỉ gồm A-Z a-z 0-9 _ -)
 //   TELEGRAM_CHAT_ID         chỉ chat này được dùng bot (nhắn /start để bot báo ID của bạn)
 //   GEMINI_API_KEY, ANTHROPIC_API_KEY (tùy chọn), CLAUDE_MODEL, GEMINI_MODEL, GEMINI_SEARCH=off
 const crypto = require("crypto");
@@ -24,7 +25,7 @@ const tg = async (token, method, payload) => {
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || process.env.STUDIO_KEY;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   // Trạng thái cấu hình cho trang Studio (chỉ trả về true/false, không lộ giá trị)

@@ -11,7 +11,7 @@
 1. Tạo bot qua [@BotFather](https://t.me/BotFather), lấy token.
 2. Vercel → Settings → Environment Variables:
    - `TELEGRAM_BOT_TOKEN`: token của bot.
-   - `TELEGRAM_WEBHOOK_SECRET`: chuỗi bí mật tự đặt, chỉ gồm `A-Z a-z 0-9 _ -`.
+   - `STUDIO_KEY`: chuỗi bí mật dùng làm secret của webhook, chỉ gồm `A-Z a-z 0-9 _ -` (hoặc đặt `TELEGRAM_WEBHOOK_SECRET` riêng, biến này được ưu tiên).
    - `GEMINI_API_KEY`: key Gemini (dùng Google Search để lấy dữ liệu mới).
    - `ANTHROPIC_API_KEY` (tùy chọn): có thì Claude soạn câu trả lời cuối, không có thì Gemini trả lời thay.
    - `TELEGRAM_CHAT_ID`: đặt sau bước 4.

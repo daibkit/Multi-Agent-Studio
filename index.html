@@ -567,7 +567,7 @@ function WebhookModal({ onClose }) {
             {st.error && <div className="text-xs text-amber-300">{st.error}</div>}
             {!st.loading && !st.error && (<>
               <Row ok={st.token} label="TELEGRAM_BOT_TOKEN" hint="token từ @BotFather" />
-              <Row ok={st.secret} label="TELEGRAM_WEBHOOK_SECRET" hint="chuỗi bí mật tự đặt (A-Z a-z 0-9 _ -)" />
+              <Row ok={st.secret} label="STUDIO_KEY (hoặc TELEGRAM_WEBHOOK_SECRET)" hint="chuỗi bí mật, chỉ gồm A-Z a-z 0-9 _ -" />
               <Row ok={st.chatId} label="TELEGRAM_CHAT_ID" hint="nhắn /start cho bot để biết ID của bạn" />
               <Row ok={st.gemini} label="GEMINI_API_KEY" hint="bắt buộc để tra cứu" />
               <Row ok={st.claude} label="ANTHROPIC_API_KEY (tùy chọn)" hint="không có thì Gemini trả lời thay Claude" />
@@ -579,7 +579,7 @@ function WebhookModal({ onClose }) {
           <div>
             <label className={labelCls}>Đăng ký webhook (mở link này trong trình duyệt, thay &lt;TOKEN&gt; và &lt;SECRET&gt;)</label>
             <textarea readOnly rows={3} value={setUrl} onFocus={e => e.target.select()} className={inputCls + " resize-none font-mono text-[11px]"} />
-            <p className="mt-1 text-[11px] text-slate-500">&lt;SECRET&gt; phải trùng với TELEGRAM_WEBHOOK_SECRET trên Vercel. Chỉ nhập token vào chính trình duyệt của bạn, đừng dán vào chat.</p>
+            <p className="mt-1 text-[11px] text-slate-500">&lt;SECRET&gt; là giá trị của STUDIO_KEY (hoặc TELEGRAM_WEBHOOK_SECRET nếu bạn đặt) trên Vercel. Chỉ nhập token vào chính trình duyệt của bạn, đừng dán vào chat.</p>
           </div>
         </div>
         <div className="flex items-center justify-end gap-3 border-t border-slate-800 px-4 py-3">
