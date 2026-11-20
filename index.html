@@ -207,6 +207,20 @@ const SCENARIOS = [
       { node: "user", via: "e14", ms: 800, msg: "Nhận phản hồi trên Telegram." },
     ],
   },
+  {
+    id: "telegram-agents", name: "Kịch bản 5 · Telegram → Gemini → Claude (agent thật)",
+    desc: "Telegram → Orchestrator → Gemini (nghiên cứu) → Claude (trả lời) → Telegram. Gọi API thật khi chạy từ nút Telegram thật.",
+    steps: [
+      { node: "user", ms: 800, msg: "Nhắn cho bot Telegram." },
+      { node: "telegram", via: "e13", ms: 900, msg: "Bot nhận tin nhắn qua Webhook, chuẩn hóa thành yêu cầu." },
+      { node: "orch", via: "e15", ms: 1000, msg: "Phân rã: Gemini nghiên cứu trước, Claude soạn câu trả lời cuối." },
+      { node: "gemini", via: "e4", ms: 2000, msg: "Gemini đang nghiên cứu và tóm tắt các ý chính…" },
+      { node: "claude", via: "e5", ms: 2200, msg: "Claude đang soạn câu trả lời từ ghi chú của Gemini…" },
+      { node: "orch", via: "e6", ms: 800, msg: "Kiểm tra và đóng gói câu trả lời." },
+      { node: "telegram", via: "e16", ms: 900, msg: "Gửi câu trả lời vào cuộc trò chuyện." },
+      { node: "user", via: "e14", ms: 700, msg: "Nhận phản hồi trên Telegram." },
+    ],
+  },
 ];
 
 const STATUS_LABEL = { idle: "Idle", thinking: "Thinking", done: "Done" };
@@ -521,8 +535,9 @@ function ExportModal({ nodes, edges, onClose }) {
 /* ------------------------------------------------------------------ */
 /* Modal Telegram thật                                                 */
 /* ------------------------------------------------------------------ */
-function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgKey, onClose }) {
+function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgKey, running, onTest, onClose }) {
   const [keyText, setKeyText] = useState(tgKey);
+  const [testText, setTestText] = useState("");
   const label = { off: "Đang tắt", connecting: "Đang kết nối…", live: "Đang nghe bot", setup: "Cần đặt Chat ID", error: "Lỗi" }[status] || status;
   const toggle = () => {
     if (!live) {
@@ -563,6 +578,16 @@ function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgK
           <p className="text-[11px] leading-relaxed text-slate-500">
             Khi bật, trang hỏi bot mỗi 3 giây. Mỗi tin nhắn mới sẽ chạy Kịch bản 4 trên sơ đồ và bot gửi lại một phản hồi xác nhận. Tin nhắn cũ trước lúc bật bị bỏ qua. Token bot nằm trên Vercel, không nằm trong trình duyệt.
           </p>
+          <div>
+            <label className={labelCls}>Thử nhanh agent thật (không cần Telegram)</label>
+            <div className="flex gap-2">
+              <input className={inputCls} value={testText} onChange={e => setTestText(e.target.value)} placeholder="VD: So sánh React và Vue cho dashboard" />
+              <button disabled={running || !testText.trim() || !keyText}
+                onClick={() => { setTgKey(keyText); try { sessionStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ } onTest(testText.trim(), keyText); onClose(); }}
+                className="shrink-0 rounded-md border border-slate-700 bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-40">Chạy thử</button>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">Cần Studio Key. Gọi Gemini rồi Claude qua /api/agent và xem kết quả trong Execution Trace.</p>
+          </div>
           <div>
             <label className={labelCls}>Tin nhắn gần đây</label>
             <div className="space-y-1">
@@ -659,24 +684,51 @@ function App() {
     return () => { stop = true; clearInterval(t); };
   }, [live, tgKey]);
 
-  /* Mỗi tin nhắn Telegram → chạy mô phỏng và gửi phản hồi thật */
-  useEffect(() => {
-    if (!live || running || queue.length === 0) return;
-    const [m, ...rest] = queue;
-    setQueue(rest);
-    setScenarioId("telegram-chat");
-    runSim("telegram-chat", {
-      userText: m.text.slice(0, 200),
+  /* Chạy luồng Telegram → Gemini → Claude với agent thật (gọi /api/agent) */
+  const runLive = (text, send, key) => {
+    const hdr = { "content-type": "application/json", ...(key ? { "x-studio-key": key } : {}) };
+    const ctx = {};
+    const callAgent = async (agent, prompt) => {
+      const node = nodesRef.current.find(n => n.id === agent);
+      const r = await fetch("/api/agent", { method: "POST", headers: hdr, body: JSON.stringify({ agent, system: node ? node.prompt : "", prompt }) });
+      const ct = r.headers.get("content-type") || "";
+      if (!ct.includes("json")) throw new Error("Không tìm thấy /api/agent (chỉ chạy khi deploy trên Vercel).");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "HTTP " + r.status);
+      return j.text;
+    };
+    setScenarioId("telegram-agents");
+    return runSim("telegram-agents", {
+      userText: text,
+      exec: {
+        gemini: async () => {
+          ctx.notes = await callAgent("gemini", "Yêu cầu của người dùng: " + text + "\n\nHãy nghiên cứu và tóm tắt các điểm cần thiết, ngắn gọn, dạng gạch đầu dòng.");
+          return ctx.notes;
+        },
+        claude: async () => {
+          ctx.answer = await callAgent("claude", "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt, ngắn gọn, phù hợp một tin nhắn Telegram.");
+          return ctx.answer;
+        },
+      },
       onReply: async log => {
-        const reply = "Đã nhận: «" + m.text.slice(0, 200) + "»\n\n(Orchestrator và Claude đang chạy ở chế độ mô phỏng nên chưa gọi model thật.)";
+        if (!send) { log("sys", "ℹ Chạy thử: không gửi tin sang Telegram."); return; }
+        const reply = (ctx.answer || "Đã nhận: «" + text.slice(0, 200) + "»\n\n(Chưa gọi được agent thật, xem Execution Trace để biết lý do.)").slice(0, 3500);
         try {
-          const r = await fetch("/api/telegram", { method: "POST", headers: { "content-type": "application/json", ...(tgKey ? { "x-studio-key": tgKey } : {}) }, body: JSON.stringify({ text: reply }) });
+          const r = await fetch("/api/telegram", { method: "POST", headers: hdr, body: JSON.stringify({ text: reply }) });
           const j = await r.json().catch(() => ({}));
           if (r.ok && j.ok) log("done", "✉ Đã gửi phản hồi tới Telegram thật", "telegram");
           else log("sys", "⚠ Gửi Telegram thất bại: " + (j.error || r.status));
         } catch (e) { log("sys", "⚠ Gửi Telegram thất bại: " + e.message); }
       },
     });
+  };
+
+  /* Mỗi tin nhắn Telegram mới → chạy luồng agent thật */
+  useEffect(() => {
+    if (!live || running || queue.length === 0) return;
+    const [m, ...rest] = queue;
+    setQueue(rest);
+    runLive(m.text.slice(0, 500), true, tgKey);
   }, [live, running, queue]);
 
   const scenario = SCENARIOS.find(s => s.id === scenarioId);
@@ -745,7 +797,7 @@ function App() {
     if (running) return;
     const sc0 = SCENARIOS.find(s => s.id === (scId || scenarioId));
     const sc = opts && opts.userText
-      ? { ...sc0, steps: sc0.steps.map((st, i) => (i === 0 ? { ...st, msg: "Nhắn cho bot Telegram: «" + opts.userText + "»" } : st)) }
+      ? { ...sc0, steps: sc0.steps.map((st, i) => (i === 0 ? { ...st, msg: "Nhắn cho bot Telegram: «" + opts.userText.slice(0, 120) + "»" } : st)) }
       : sc0;
     const myId = ++runRef.current;
     const alive = () => runRef.current === myId;
@@ -781,7 +833,19 @@ function App() {
       }
       setStatuses(s => ({ ...s, [node.id]: "thinking" }));
       log("info", step.msg, node.id);
-      await sleep(step.ms);
+      if (opts && opts.exec && opts.exec[node.id]) {
+        try {
+          const out = await opts.exec[node.id]();
+          if (!alive()) return;
+          const flat = String(out).replace(/\s+/g, " ");
+          log("info", "↳ " + flat.slice(0, 320) + (flat.length > 320 ? "…" : ""), node.id);
+        } catch (e) {
+          if (!alive()) return;
+          log("sys", "⚠ " + node.name + " lỗi: " + (e.message || e));
+        }
+      } else {
+        await sleep(step.ms);
+      }
       if (!alive()) return;
       if (opts && opts.onReply && step.via === "e16") await opts.onReply(log);
       if (!alive()) return;
@@ -953,7 +1017,7 @@ function App() {
       </section>
 
       {showAdd && <AddAgentModal nodes={nodes} onClose={() => setShowAdd(false)} onCreate={createAgent} />}
-      {showTg && <TelegramModal status={tgStatus} note={tgNote} chats={tgChats} msgs={tgMsgs} live={live} setLive={setLive} tgKey={tgKey} setTgKey={setTgKey} onClose={() => setShowTg(false)} />}
+      {showTg && <TelegramModal status={tgStatus} note={tgNote} chats={tgChats} msgs={tgMsgs} live={live} setLive={setLive} tgKey={tgKey} setTgKey={setTgKey} running={running} onTest={(t, k) => runLive(t, false, k)} onClose={() => setShowTg(false)} />}
       {showExport && <ExportModal nodes={nodes} edges={edges} onClose={() => setShowExport(false)} />}
     </div>
   );

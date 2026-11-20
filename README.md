@@ -16,3 +16,16 @@
 5. Đặt `TELEGRAM_CHAT_ID` bằng ID đó trên Vercel, redeploy, rồi bật kết nối lại.
 
 Từ đó mỗi tin nhắn mới gửi cho bot sẽ chạy Kịch bản 4 trên sơ đồ và bot trả lời một tin xác nhận. Orchestrator/Claude vẫn là mô phỏng, chưa gọi model thật.
+
+## Kết nối agent Claude và Gemini thật
+
+Thêm các biến môi trường trên Vercel rồi redeploy:
+
+- `STUDIO_KEY` (bắt buộc cho `/api/agent`): cùng giá trị bạn nhập trong nút **Telegram thật**.
+- `ANTHROPIC_API_KEY`: key của Claude. Tùy chọn `CLAUDE_MODEL` (mặc định `claude-sonnet-5-5`).
+- `GEMINI_API_KEY`: key của Gemini. Tùy chọn `GEMINI_MODEL` (mặc định `gemini-3.6-flash`).
+
+Khi có tin nhắn Telegram, luồng chạy: Telegram → Orchestrator → **Gemini** (nghiên cứu) → **Claude** (soạn trả lời) → Telegram.
+System Prompt của mỗi agent lấy từ ô System Prompt trong Inspector (sửa trên trang có hiệu lực ngay, nhưng mất khi tải lại).
+Có thể thử không cần Telegram: **Telegram thật** → "Thử nhanh agent thật".
+Mỗi lần chạy tốn API của bạn (tối đa 1024 token đầu ra mỗi agent).
