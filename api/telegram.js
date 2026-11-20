@@ -20,7 +20,13 @@ module.exports = async (req, res) => {
   try {
     if (req.method === "POST") {
       if (!chatId) return res.status(400).json({ error: "TELEGRAM_CHAT_ID chưa được đặt" });
-      const text = String((req.body && req.body.text) || "").slice(0, 1000);
+      // Telegram không render Markdown thô: bỏ ký hiệu, đổi gạch đầu dòng thành •
+      const text = String((req.body && req.body.text) || "")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/^#{1,6}\s*/gm, "")
+        .replace(/^\s*[*-]\s+/gm, "• ")
+        .replace(/`/g, "")
+        .slice(0, 3900);
       if (!text) return res.status(400).json({ error: "Thiếu text" });
       const r = await fetch(`${API(token)}/sendMessage`, {
         method: "POST",

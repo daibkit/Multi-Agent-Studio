@@ -705,6 +705,7 @@ function App() {
   const runLive = (text, send, key) => {
     const hdr = { "content-type": "application/json", ...(key ? { "x-studio-key": key } : {}) };
     const ctx = {};
+    const today = new Date().toLocaleDateString("vi-VN", { dateStyle: "full" });
     const callAgent = async (agent, prompt) => {
       const node = nodesRef.current.find(n => n.id === agent);
       const r = await fetch("/api/agent", { method: "POST", headers: hdr, body: JSON.stringify({ agent, system: node ? node.prompt : "", prompt }) });
@@ -719,11 +720,11 @@ function App() {
       userText: text,
       exec: {
         gemini: async () => {
-          ctx.notes = await callAgent("gemini", "Yêu cầu của người dùng: " + text + "\n\nHãy nghiên cứu và tóm tắt các điểm cần thiết, ngắn gọn, dạng gạch đầu dòng.");
+          ctx.notes = await callAgent("gemini", "Hôm nay là " + today + ". Yêu cầu của người dùng: " + text + "\n\nHãy dùng Google Search để lấy dữ liệu mới nhất và cụ thể (số liệu, thứ hạng, kết quả gần đây, thành tích, mốc thời gian), kèm nguồn và ngày của dữ liệu. Không bịa số liệu; nếu không tìm thấy thì nói rõ. Trả lời dạng gạch đầu dòng.");
           return ctx.notes;
         },
         claude: async () => {
-          const p = "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt, ngắn gọn, phù hợp một tin nhắn Telegram.";
+          const p = "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt. Giữ lại các số liệu cụ thể và nguồn từ ghi chú, nếu thiếu số liệu thì nói rõ là thiếu. Viết văn bản thuần, không dùng Markdown (không **, không #), có thể dùng emoji và dấu • cho danh sách, tối đa khoảng 1500 ký tự.";
           try {
             ctx.answer = await callAgent("claude", p);
             return ctx.answer;

@@ -28,4 +28,6 @@ Thêm các biến môi trường trên Vercel rồi redeploy:
 Khi có tin nhắn Telegram, luồng chạy: Telegram → Orchestrator → **Gemini** (nghiên cứu) → **Claude** (soạn trả lời) → Telegram.
 System Prompt của mỗi agent lấy từ ô System Prompt trong Inspector (sửa trên trang có hiệu lực ngay, nhưng mất khi tải lại).
 Có thể thử không cần Telegram: **Telegram thật** → "Thử nhanh agent thật".
-Mỗi lần chạy tốn API của bạn (tối đa 1024 token đầu ra mỗi agent).
+Mỗi lần chạy tốn API của bạn (tối đa 2048 token đầu ra mỗi agent).
+
+Gemini dùng Google Search grounding để lấy dữ liệu mới và đính kèm nguồn; đặt `GEMINI_SEARCH=off` nếu muốn tắt.

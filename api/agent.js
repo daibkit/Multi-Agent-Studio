@@ -2,7 +2,7 @@
 // Biến môi trường:
 //   STUDIO_KEY         (bắt buộc)  mọi request phải có header x-studio-key, tránh bị người lạ đốt tiền API
 //   ANTHROPIC_API_KEY  (cho Claude)  CLAUDE_MODEL (mặc định claude-sonnet-5-5)
-//   GEMINI_API_KEY     (cho Gemini)  GEMINI_MODEL (mặc định gemini-3.6-flash)
+//   GEMINI_API_KEY     (cho Gemini)  GEMINI_MODEL (mặc định gemini-3.6-flash), GEMINI_SEARCH=off để tắt Google Search
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -30,7 +30,7 @@ module.exports = async (req, res) => {
         headers: { "x-api-key": claudeKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({
           model: process.env.CLAUDE_MODEL || "claude-sonnet-5-5",
-          max_tokens: 1024,
+          max_tokens: 2048,
           ...(system ? { system } : {}),
           messages: [{ role: "user", content: prompt }],
         }),
@@ -50,14 +50,19 @@ module.exports = async (req, res) => {
         body: JSON.stringify({
           ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
           contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 1024 },
+          // Google Search grounding để có dữ liệu mới; đặt GEMINI_SEARCH=off để tắt
+          ...(process.env.GEMINI_SEARCH === "off" ? {} : { tools: [{ google_search: {} }] }),
+          generationConfig: { maxOutputTokens: 2048 },
         }),
       });
       const j = await r.json();
       if (!r.ok) return res.status(502).json({ ok: false, error: (j.error && j.error.message) || "Lỗi Gemini API (" + r.status + ")" });
       const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
-      const text = parts.map(p => p.text || "").join("");
+      let text = parts.map(p => p.text || "").join("");
       if (!text) return res.status(502).json({ ok: false, error: "Gemini không trả về nội dung." });
+      const chunks = (j.candidates[0].groundingMetadata && j.candidates[0].groundingMetadata.groundingChunks) || [];
+      const sources = [...new Set(chunks.map(c => c.web && (c.web.title || c.web.uri)).filter(Boolean))].slice(0, 5);
+      if (sources.length) text += "\n\nNguồn: " + sources.join("; ");
       return res.status(200).json({ ok: true, text });
     }
 
