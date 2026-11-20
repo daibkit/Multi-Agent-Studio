@@ -74,15 +74,7 @@ const PALETTE = ["#f59e0b", "#818cf8", "#2dd4bf", "#e879f9", "#38bdf8", "#34d399
 
 const INITIAL_NODES = [
   {
-    id: "user", name: "Người dùng", icon: "user", color: "#94a3b8", x: 40, y: 40,
-    role: "Nguồn yêu cầu và nơi nhận kết quả cuối cùng.",
-    model: "Human", tools: ["Chat UI", "API Client"],
-    prompt: "Không có System Prompt. Gửi yêu cầu bằng ngôn ngữ tự nhiên, nhận lại kết quả (code, tài liệu, bản tin).",
-    input: "{ message: string, attachments?: File[] }",
-    output: "{ result: string | Artifact }",
-  },
-  {
-    id: "telegram", name: "Telegram", icon: "send", color: "#38bdf8", x: 40, y: 250,
+    id: "telegram", name: "Telegram", icon: "send", color: "#38bdf8", x: 40, y: 235,
     role: "Kênh chat của người dùng: nhận tin nhắn gửi tới và phản hồi lại qua Telegram Bot.",
     model: "Telegram Bot API", tools: ["Telegram Bot", "Webhook", "Inline Keyboard"],
     prompt: "Không có System Prompt. Nhận tin nhắn từ người dùng qua Bot, chuyển thành yêu cầu và gửi kết quả/thông báo ngược lại cho người dùng.",
@@ -90,7 +82,7 @@ const INITIAL_NODES = [
     output: "{ messageId: number, delivered: boolean }",
   },
   {
-    id: "scheduler", name: "Scheduler", icon: "clock", color: "#94a3b8", x: 40, y: 460,
+    id: "scheduler", name: "Scheduler", icon: "clock", color: "#94a3b8", x: 40, y: 420,
     role: "Kích hoạt job định kỳ (cron) cho các luồng tự động.",
     model: "Cron / Trigger", tools: ["Cron", "Webhook Trigger"],
     prompt: "Không có System Prompt. Phát sự kiện theo lịch (VD: 07:00 hằng ngày) để khởi chạy luồng Auto Digest.",
@@ -140,8 +132,6 @@ const INITIAL_NODES = [
 ];
 
 const INITIAL_EDGES = [
-  { id: "e1", from: "user", to: "orch", label: "Yêu cầu" },
-  { id: "e2", from: "orch", to: "user", label: "Kết quả" },
   { id: "e3", from: "scheduler", to: "orch", label: "Trigger" },
   { id: "e4", from: "orch", to: "gemini", label: "Research / Crawl" },
   { id: "e5", from: "gemini", to: "claude", label: "Spec (Handoff)" },
@@ -151,8 +141,6 @@ const INITIAL_EDGES = [
   { id: "e9", from: "gemini", to: "orch", label: "Báo cáo" },
   { id: "e10", from: "gemini", to: "memory", label: "Lưu digest" },
   { id: "e11", from: "memory", to: "bot", label: "Đọc digest" },
-  { id: "e13", from: "user", to: "telegram", label: "Chat" },
-  { id: "e14", from: "telegram", to: "user", label: "Nhận" },
   { id: "e15", from: "telegram", to: "orch", label: "Hỏi" },
   { id: "e16", from: "orch", to: "telegram", label: "Đáp" },
   { id: "e12", from: "claude", to: "memory", label: "Lưu code/doc" },
@@ -608,9 +596,25 @@ function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgK
 /* ------------------------------------------------------------------ */
 /* App                                                                 */
 /* ------------------------------------------------------------------ */
+const STORE_KEY = "multi-agent-studio:v1";
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.nodes) || !Array.isArray(d.edges)) return null;
+    const nodes = d.nodes.filter(n => n && n.id && typeof n.x === "number" && typeof n.y === "number" && Array.isArray(n.tools));
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = d.edges.filter(e => e && ids.has(e.from) && ids.has(e.to));
+    return nodes.length ? { nodes, edges } : null;
+  } catch (e) { return null; }
+}
+
 function App() {
-  const [nodes, setNodes] = useState(INITIAL_NODES);
-  const [edges, setEdges] = useState(INITIAL_EDGES);
+  const [saved] = useState(loadSaved);
+  const [nodes, setNodes] = useState(saved ? saved.nodes : INITIAL_NODES);
+  const [edges, setEdges] = useState(saved ? saved.edges : INITIAL_EDGES);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [selected, setSelected] = useState("orch");
   const [scenarioId, setScenarioId] = useState("build");
   const [speed, setSpeed] = useState(1);
@@ -647,6 +651,14 @@ function App() {
   useEffect(() => {
     try { const k = sessionStorage.getItem("studio-key"); if (k) setTgKey(k); } catch (e) { /* bỏ qua */ }
   }, []);
+
+  /* Tự động lưu sơ đồ vào trình duyệt */
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify({ nodes, edges })); } catch (e) { /* bỏ qua */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [nodes, edges]);
 
   /* Polling Telegram thật qua /api/telegram */
   useEffect(() => {
@@ -800,6 +812,16 @@ function App() {
     setLogs([]);
   };
 
+  const resetDefaults = () => {
+    if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
+    setConfirmReset(false);
+    resetSim();
+    setNodes(INITIAL_NODES);
+    setEdges(INITIAL_EDGES);
+    setSelected(null);
+    try { localStorage.removeItem(STORE_KEY); } catch (e) { /* bỏ qua */ }
+  };
+
   const runSim = async (scId, opts) => {
     if (running) return;
     const sc0 = SCENARIOS.find(s => s.id === (scId || scenarioId));
@@ -824,7 +846,7 @@ function App() {
     for (const step of sc.steps) {
       if (!alive()) return;
       const node = nodesRef.current.find(n => n.id === step.node);
-      if (!node) { log("sys", "⚠ Bỏ qua bước: node «" + step.node + "» không còn tồn tại."); continue; }
+      if (!node) continue;
       if (step.via) {
         const edge = edgesRef.current.find(e => e.id === step.via);
         if (edge) {
@@ -834,8 +856,6 @@ function App() {
           await sleep(850);
           if (!alive()) return;
           setEdgeStates(s => ({ ...s, [edge.id]: "done" }));
-        } else {
-          log("sys", "⚠ Đường nối đã bị xóa, chuyển tiếp trực tiếp.");
         }
       }
       setStatuses(s => ({ ...s, [node.id]: "thinking" }));
@@ -936,6 +956,10 @@ function App() {
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-700">
             <Icon name="plus" size={14} />Add Agent
+          </button>
+          <button onClick={resetDefaults} title="Khôi phục sơ đồ mặc định (xóa phần đã lưu)"
+            className={"inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm " + (confirmReset ? "border-rose-700 bg-rose-950/40 text-rose-300" : "border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-600")}>
+            <Icon name="reset" size={14} />{confirmReset ? "Bấm lần nữa để xác nhận" : "Mặc định"}
           </button>
           <button onClick={() => setShowTg(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-600">
             <span className="h-2 w-2 rounded-full" style={{ background: tgStatus === "live" ? "#34d399" : tgStatus === "connecting" || tgStatus === "setup" ? "#f59e0b" : tgStatus === "error" ? "#fb7185" : "#475569" }} />
