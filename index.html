@@ -530,8 +530,9 @@ function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgK
   const toggle = () => {
     if (!live) {
       setTgKey(keyText);
-      try { sessionStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ }
+      try { localStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ }
     }
+    try { localStorage.setItem("tg-live", live ? "0" : "1"); } catch (e) { /* bỏ qua */ }
     setLive(!live);
   };
   return (
@@ -564,14 +565,14 @@ function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgK
             {live ? "Ngắt kết nối" : "Bật kết nối"}
           </button>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            Khi bật, trang hỏi bot mỗi 3 giây. Mỗi tin nhắn mới sẽ chạy Kịch bản 4 trên sơ đồ và bot gửi lại một phản hồi xác nhận. Tin nhắn cũ trước lúc bật bị bỏ qua. Token bot nằm trên Vercel, không nằm trong trình duyệt.
+            Khi bật, trang hỏi bot mỗi 3 giây. Mỗi tin nhắn mới sẽ chạy Kịch bản 4 trên sơ đồ và bot gửi lại một phản hồi xác nhận. Tin nhắn cũ trước lúc bật bị bỏ qua. Sau khi bật một lần, trang tự kết nối lại mỗi lần mở (Studio Key được lưu trong trình duyệt này); bấm “Ngắt kết nối” để tắt. Token bot nằm trên Vercel, không nằm trong trình duyệt.
           </p>
           <div>
             <label className={labelCls}>Thử nhanh agent thật (không cần Telegram)</label>
             <div className="flex gap-2">
               <input className={inputCls} value={testText} onChange={e => setTestText(e.target.value)} placeholder="VD: So sánh React và Vue cho dashboard" />
               <button disabled={running || !testText.trim() || !keyText}
-                onClick={() => { setTgKey(keyText); try { sessionStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ } onTest(testText.trim(), keyText); onClose(); }}
+                onClick={() => { setTgKey(keyText); try { localStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ } onTest(testText.trim(), keyText); onClose(); }}
                 className="shrink-0 rounded-md border border-slate-700 bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-40">Chạy thử</button>
             </div>
             <p className="mt-1 text-[11px] text-slate-500">Cần Studio Key. Gọi Gemini rồi Claude qua /api/agent và xem kết quả trong Execution Trace.</p>
@@ -649,7 +650,11 @@ function App() {
   useEffect(() => { if (logEndRef.current) logEndRef.current.scrollTop = logEndRef.current.scrollHeight; }, [logs, drawerOpen]);
 
   useEffect(() => {
-    try { const k = sessionStorage.getItem("studio-key"); if (k) setTgKey(k); } catch (e) { /* bỏ qua */ }
+    try {
+      const k = localStorage.getItem("studio-key") || sessionStorage.getItem("studio-key");
+      if (k) setTgKey(k);
+      if (localStorage.getItem("tg-live") === "1") setLive(true); /* tự kết nối bot Telegram */
+    } catch (e) { /* bỏ qua */ }
   }, []);
 
   /* Tự động lưu sơ đồ vào trình duyệt */
