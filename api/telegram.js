@@ -2,19 +2,19 @@
 // Biến môi trường (đặt trong Vercel → Settings → Environment Variables):
 //   TELEGRAM_BOT_TOKEN  (bắt buộc)  token từ @BotFather
 //   TELEGRAM_CHAT_ID    (bắt buộc sau bước thiết lập)  chỉ chat này được đọc/gửi
-//   STUDIO_KEY          (khuyên dùng)  nếu đặt, mọi request phải kèm header x-studio-key
+//   Xác thực: phiên đăng nhập (ADMIN_USER, ADMIN_PASSWORD, SESSION_SECRET) hoặc header x-studio-key = STUDIO_KEY
+
+const { authAvailable, isAuthed } = require("./_auth");
 
 const API = token => `https://api.telegram.org/bot${token}`;
 
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
+  if (!authAvailable()) return res.status(503).json({ error: "Cần cấu hình đăng nhập hoặc STUDIO_KEY." });
+  if (!isAuthed(req)) return res.status(401).json({ error: "unauthorized" });
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return res.status(200).json({ configured: false });
-
-  const studioKey = process.env.STUDIO_KEY;
-  if (studioKey && req.headers["x-studio-key"] !== studioKey) {
-    return res.status(401).json({ error: "unauthorized" });
-  }
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   try {

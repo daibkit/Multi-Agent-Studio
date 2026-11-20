@@ -31,3 +31,14 @@ Có thể thử không cần Telegram: **Telegram thật** → "Thử nhanh agen
 Mỗi lần chạy tốn API của bạn (tối đa 2048 token đầu ra mỗi agent).
 
 Gemini dùng Google Search grounding để lấy dữ liệu mới và đính kèm nguồn; đặt `GEMINI_SEARCH=off` nếu muốn tắt.
+
+## Đăng nhập (kết nối tự động)
+
+Đặt thêm 3 biến môi trường trên Vercel rồi redeploy:
+
+- `ADMIN_USER`: tên đăng nhập.
+- `ADMIN_PASSWORD`: mật khẩu (dùng chuỗi dài, khó đoán).
+- `SESSION_SECRET`: chuỗi ngẫu nhiên dài (từ 32 ký tự) dùng để ký cookie phiên.
+
+Khi đã cấu hình, trang hiện màn hình đăng nhập. Đăng nhập xong, cookie `HttpOnly` giữ phiên 30 ngày và trang tự kết nối bot Telegram, không cần nhập Studio Key.
+`/api/telegram` và `/api/agent` chấp nhận phiên đăng nhập **hoặc** header `x-studio-key` (nếu bạn vẫn đặt `STUDIO_KEY`). Nếu chưa đặt biến nào, hai endpoint này từ chối mọi request.
