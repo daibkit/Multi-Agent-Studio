@@ -519,6 +519,68 @@ function ExportModal({ nodes, edges, onClose }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Modal Telegram thật                                                 */
+/* ------------------------------------------------------------------ */
+function TelegramModal({ status, note, chats, msgs, live, setLive, tgKey, setTgKey, onClose }) {
+  const [keyText, setKeyText] = useState(tgKey);
+  const label = { off: "Đang tắt", connecting: "Đang kết nối…", live: "Đang nghe bot", setup: "Cần đặt Chat ID", error: "Lỗi" }[status] || status;
+  const toggle = () => {
+    if (!live) {
+      setTgKey(keyText);
+      try { sessionStorage.setItem("studio-key", keyText); } catch (e) { /* bỏ qua */ }
+    }
+    setLive(!live);
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex w-full max-w-lg flex-col rounded-xl border border-slate-800 bg-slate-900 shadow-2xl" style={{ maxHeight: "85vh" }}>
+        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold"><Icon name="send" size={15} />Kết nối bot Telegram thật</div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-200"><Icon name="x" size={16} /></button>
+        </div>
+        <div className="space-y-4 overflow-auto p-4 scroll-thin text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">Trạng thái:</span>
+            <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs text-slate-200">{label}</span>
+          </div>
+          {note && <div className="rounded-md border border-amber-900/60 bg-amber-950/30 p-2.5 text-xs text-amber-300">{note}</div>}
+          {status === "setup" && (
+            <div className="rounded-md border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300">
+              Hãy nhắn một tin bất kỳ cho bot, rồi đặt <code className="text-sky-300">TELEGRAM_CHAT_ID</code> trên Vercel bằng ID của bạn bên dưới và redeploy.
+              <div className="mt-2 space-y-1">
+                {chats.length === 0 && <div className="text-slate-500">Chưa thấy cuộc trò chuyện nào. Nhắn tin cho bot rồi chờ vài giây.</div>}
+                {chats.map(c => <div key={c.id} className="font-mono">{c.id} <span className="text-slate-500">· {c.name}</span></div>)}
+              </div>
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Studio Key (nếu bạn đã đặt STUDIO_KEY)</label>
+            <input type="password" className={inputCls} value={keyText} onChange={e => setKeyText(e.target.value)} placeholder="Để trống nếu không dùng" disabled={live} />
+          </div>
+          <button onClick={toggle} className={"w-full rounded-md px-3 py-2 text-sm font-medium " + (live ? "border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700" : "bg-emerald-500 text-slate-950 hover:bg-emerald-400")}>
+            {live ? "Ngắt kết nối" : "Bật kết nối"}
+          </button>
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            Khi bật, trang hỏi bot mỗi 3 giây. Mỗi tin nhắn mới sẽ chạy Kịch bản 4 trên sơ đồ và bot gửi lại một phản hồi xác nhận. Tin nhắn cũ trước lúc bật bị bỏ qua. Token bot nằm trên Vercel, không nằm trong trình duyệt.
+          </p>
+          <div>
+            <label className={labelCls}>Tin nhắn gần đây</label>
+            <div className="space-y-1">
+              {msgs.length === 0 && <div className="text-xs text-slate-600">Chưa có tin nhắn mới.</div>}
+              {msgs.map(m => (
+                <div key={m.id} className="rounded-md border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-300">
+                  <span className="text-slate-500">{m.from || "?"}:</span> {m.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* App                                                                 */
 /* ------------------------------------------------------------------ */
 function App() {
@@ -534,6 +596,17 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showTg, setShowTg] = useState(false);
+  const [live, setLive] = useState(false);
+  const [tgStatus, setTgStatus] = useState("off");
+  const [tgNote, setTgNote] = useState("");
+  const [tgChats, setTgChats] = useState([]);
+  const [tgMsgs, setTgMsgs] = useState([]);
+  const [tgKey, setTgKey] = useState("");
+  const [queue, setQueue] = useState([]);
+  const offsetRef = useRef(null);
+  const baseRef = useRef(false);
+  const inflightRef = useRef(false);
 
   const runRef = useRef(0);
   const speedRef = useRef(1);
@@ -545,6 +618,66 @@ function App() {
   edgesRef.current = edges;
 
   useEffect(() => { if (logEndRef.current) logEndRef.current.scrollTop = logEndRef.current.scrollHeight; }, [logs, drawerOpen]);
+
+  useEffect(() => {
+    try { const k = sessionStorage.getItem("studio-key"); if (k) setTgKey(k); } catch (e) { /* bỏ qua */ }
+  }, []);
+
+  /* Polling Telegram thật qua /api/telegram */
+  useEffect(() => {
+    if (!live) { offsetRef.current = null; baseRef.current = false; setTgStatus(st => (st === "error" ? st : "off")); return; }
+    let stop = false;
+    setTgStatus("connecting");
+    const headers = tgKey ? { "x-studio-key": tgKey } : {};
+    const tick = async () => {
+      if (inflightRef.current) return;
+      inflightRef.current = true;
+      try {
+        const url = "/api/telegram" + (offsetRef.current != null ? "?offset=" + offsetRef.current : "");
+        const r = await fetch(url, { headers });
+        const ct = r.headers.get("content-type") || "";
+        if (!ct.includes("json")) throw new Error("Không tìm thấy /api/telegram. Tính năng này chỉ chạy khi deploy trên Vercel.");
+        const j = await r.json();
+        if (stop) return;
+        if (r.status === 401) { setTgStatus("error"); setTgNote("Sai hoặc thiếu Studio Key."); setLive(false); return; }
+        if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+        if (!j.configured) { setTgStatus("error"); setTgNote("Chưa đặt biến môi trường TELEGRAM_BOT_TOKEN trên Vercel."); setLive(false); return; }
+        if (j.needsChatId) { setTgStatus("setup"); setTgChats(j.chats || []); setTgNote("Chưa đặt TELEGRAM_CHAT_ID."); return; }
+        setTgStatus("live"); setTgNote("");
+        if (!baseRef.current) { baseRef.current = true; if (j.next != null) offsetRef.current = j.next; return; }
+        if (j.next != null) offsetRef.current = j.next;
+        if (j.updates && j.updates.length) {
+          setTgMsgs(m => [...j.updates.map(u => ({ ...u, at: Date.now() })), ...m].slice(0, 8));
+          setQueue(q => [...q, ...j.updates]);
+        }
+      } catch (e) {
+        if (!stop) { setTgStatus("error"); setTgNote(e.message || "Lỗi kết nối"); setLive(false); }
+      } finally { inflightRef.current = false; }
+    };
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => { stop = true; clearInterval(t); };
+  }, [live, tgKey]);
+
+  /* Mỗi tin nhắn Telegram → chạy mô phỏng và gửi phản hồi thật */
+  useEffect(() => {
+    if (!live || running || queue.length === 0) return;
+    const [m, ...rest] = queue;
+    setQueue(rest);
+    setScenarioId("telegram-chat");
+    runSim("telegram-chat", {
+      userText: m.text.slice(0, 200),
+      onReply: async log => {
+        const reply = "Đã nhận: «" + m.text.slice(0, 200) + "»\n\n(Orchestrator và Claude đang chạy ở chế độ mô phỏng nên chưa gọi model thật.)";
+        try {
+          const r = await fetch("/api/telegram", { method: "POST", headers: { "content-type": "application/json", ...(tgKey ? { "x-studio-key": tgKey } : {}) }, body: JSON.stringify({ text: reply }) });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.ok) log("done", "✉ Đã gửi phản hồi tới Telegram thật", "telegram");
+          else log("sys", "⚠ Gửi Telegram thất bại: " + (j.error || r.status));
+        } catch (e) { log("sys", "⚠ Gửi Telegram thất bại: " + e.message); }
+      },
+    });
+  }, [live, running, queue]);
 
   const scenario = SCENARIOS.find(s => s.id === scenarioId);
   const selectedNode = nodes.find(n => n.id === selected) || null;
@@ -608,9 +741,12 @@ function App() {
     setLogs([]);
   };
 
-  const runSim = async () => {
+  const runSim = async (scId, opts) => {
     if (running) return;
-    const sc = SCENARIOS.find(s => s.id === scenarioId);
+    const sc0 = SCENARIOS.find(s => s.id === (scId || scenarioId));
+    const sc = opts && opts.userText
+      ? { ...sc0, steps: sc0.steps.map((st, i) => (i === 0 ? { ...st, msg: "Nhắn cho bot Telegram: «" + opts.userText + "»" } : st)) }
+      : sc0;
     const myId = ++runRef.current;
     const alive = () => runRef.current === myId;
     const sleep = ms => new Promise(r => setTimeout(r, ms / speedRef.current));
@@ -646,6 +782,8 @@ function App() {
       setStatuses(s => ({ ...s, [node.id]: "thinking" }));
       log("info", step.msg, node.id);
       await sleep(step.ms);
+      if (!alive()) return;
+      if (opts && opts.onReply && step.via === "e16") await opts.onReply(log);
       if (!alive()) return;
       setStatuses(s => ({ ...s, [node.id]: "done" }));
       log("done", "✓ " + node.name + " hoàn tất", node.id);
@@ -715,7 +853,7 @@ function App() {
           className="rounded-md border border-slate-800 bg-slate-900 px-2 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-slate-600" title="Tốc độ mô phỏng">
           <option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option>
         </select>
-        <button onClick={runSim} disabled={running}
+        <button onClick={() => runSim()} disabled={running}
           className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-emerald-400 disabled:opacity-60">
           {running ? <span className="block h-3.5 w-3.5 rounded-full border-2 border-slate-950 border-t-transparent spin" /> : <Icon name="play" size={14} />}
           {running ? "Đang chạy…" : "Run Simulation"}
@@ -727,6 +865,10 @@ function App() {
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 hover:bg-slate-700">
             <Icon name="plus" size={14} />Add Agent
+          </button>
+          <button onClick={() => setShowTg(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-600">
+            <span className="h-2 w-2 rounded-full" style={{ background: tgStatus === "live" ? "#34d399" : tgStatus === "connecting" || tgStatus === "setup" ? "#f59e0b" : tgStatus === "error" ? "#fb7185" : "#475569" }} />
+            <Icon name="send" size={14} />Telegram thật
           </button>
           <button onClick={() => setShowExport(true)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-600">
             <Icon name="copy" size={14} />Export
@@ -811,6 +953,7 @@ function App() {
       </section>
 
       {showAdd && <AddAgentModal nodes={nodes} onClose={() => setShowAdd(false)} onCreate={createAgent} />}
+      {showTg && <TelegramModal status={tgStatus} note={tgNote} chats={tgChats} msgs={tgMsgs} live={live} setLive={setLive} tgKey={tgKey} setTgKey={setTgKey} onClose={() => setShowTg(false)} />}
       {showExport && <ExportModal nodes={nodes} edges={edges} onClose={() => setShowExport(false)} />}
     </div>
   );
