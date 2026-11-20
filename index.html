@@ -706,8 +706,15 @@ function App() {
           return ctx.notes;
         },
         claude: async () => {
-          ctx.answer = await callAgent("claude", "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt, ngắn gọn, phù hợp một tin nhắn Telegram.");
-          return ctx.answer;
+          const p = "Yêu cầu của người dùng: " + text + "\n\nGhi chú nghiên cứu từ Gemini:\n" + (ctx.notes || "(không có)") + "\n\nHãy trả lời người dùng bằng tiếng Việt, ngắn gọn, phù hợp một tin nhắn Telegram.";
+          try {
+            ctx.answer = await callAgent("claude", p);
+            return ctx.answer;
+          } catch (e) {
+            if (!/ANTHROPIC_API_KEY/.test(e.message || "")) throw e;
+            ctx.answer = await callAgent("gemini", p);
+            return "(Chưa có ANTHROPIC_API_KEY nên Gemini trả lời thay) " + ctx.answer;
+          }
         },
       },
       onReply: async log => {
